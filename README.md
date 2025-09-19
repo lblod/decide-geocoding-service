@@ -35,11 +35,5 @@ You need a running Nominatim instance for geocoding. The example below uses Belg
  
  ## Structure
  - `library/` - Core modules for location extraction and geocoding
- - `models/` - Model files and configs
  - `demo/` - Example Streamlit app
  
- ## License
- See repository for license details.
-# decide-geocoding-service
-
-
