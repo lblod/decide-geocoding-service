@@ -12,16 +12,16 @@ Location extraction is based on the RobBERT NER model and currently only suitabl
  ## Model
 The location extraction model used in this project can be found on HuggingFace:
 
-**svercoutere/RoBERTa-NER-BE-Loc**
+[svercoutere/RoBERTa-NER-BE-Loc](https://huggingface.co/svercoutere/RoBERTa-NER-BE-Loc)
 
-You need to download the model from HuggingFace and pass its location to the spaCy model loader.
+You need to download the model from [HuggingFace](https://huggingface.co/svercoutere/RoBERTa-NER-BE-Loc) and pass its location to the spaCy model loader.
  
  ## Requirements
  - Python 3.8+
  - SpaCy (model was trained with spaCy v3.6.1, tested with version 3.7.2)
  - [Nominatim](https://nominatim.org/) geocoding service (Docker)
 
-- Download the RobBERT NER model from HuggingFace and provide its path to spaCy.
+- Download the RobBERT NER model from [HuggingFace](https://huggingface.co/svercoutere/RoBERTa-NER-BE-Loc) and provide its path to spaCy.
  
  ### Running Nominatim with Docker
 You need a running Nominatim instance for geocoding. The example below uses Belgium, but you can specify other regions. See https://download.geofabrik.de for available locations. Start it using:
