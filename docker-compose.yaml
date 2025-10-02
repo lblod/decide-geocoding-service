@@ -1,6 +1,19 @@
 services:
-  decide-geocoding-service:
-    image:  decide-geocoding-service:latest
+  nominatim:
+    image: mediagis/nominatim:5.1
+    container_name: nominatim
+    networks:
+      - decide
+    expose:
+      - "8080:8080"
+    environment:
+      - PBF_URL=https://download.geofabrik.de/europe/belgium-latest.osm.pbf
+    restart: unless-stopped
+    volumes:
+      - ./nominatim-data:/var/lib/postgresql/16/main
+
+  geocoding-service:
+    container_name: geocoding-service
     build:
       context: .
     ports:
@@ -10,9 +23,8 @@ services:
     environment:
       MODE: "development"
       LOG_LEVEL: "debug"
-      MU_SPARQL_ENDPOINT: MU_SPARQL_ENDPOINT_URL
-      NOMINATIM_BASE_URL: NOMINATIM_BASE_URL
-      NER_MODEL_PATH: PATH_TO_NER_MODEL_FOLDER
+      MU_SPARQL_ENDPOINT: http://virtuoso:8890/sparql
+      NOMINATIM_BASE_URL: http://nominatim:8080
       NER_LABELS: '["CITY", "DOMAIN", "HOUSENUMBERS", "INTERSECTION", "POSTCODE", "PROVINCE", "ROAD", "STREET"]'
     volumes:
       - ./:/app
