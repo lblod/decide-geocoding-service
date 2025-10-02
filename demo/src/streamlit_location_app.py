@@ -408,7 +408,7 @@ with st.expander("Configuration", expanded=False):
         st.subheader("NER Model")
         model_path = st.text_input(
             "Model Path", 
-            value="D:/OneDrive - Sirus NV/ABB/UC0.1/UC1/models/ner/robbert/model-best"
+            value=os.getenv("HF_MODEL_PATH", "D:/OneDrive - Sirus NV/ABB/UC0.1/UC1/models/ner/robbert/model-best")
         )
         ner_labels = st.multiselect(
             "Labels to Extract",
@@ -418,7 +418,7 @@ with st.expander("Configuration", expanded=False):
     
     with col2:
         st.subheader("Geocoding")
-        nominatim_url = st.text_input("Nominatim URL", value="http://localhost:8080")
+        nominatim_url = st.text_input("Nominatim URL", value=os.getenv("NOMINATIM_URL", "http://localhost:8080"))
         default_city = st.text_input("Default City", value="Gent")
 
     # Initialize models button
