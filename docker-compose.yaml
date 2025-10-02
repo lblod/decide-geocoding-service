@@ -1,0 +1,22 @@
+services:
+  decide-geocoding-service:
+    image:  decide-geocoding-service:latest
+    build:
+      context: .
+    ports:
+      - "8081:80"
+    networks:
+      - decide
+    environment:
+      MODE: "development"
+      LOG_LEVEL: "debug"
+      MU_SPARQL_ENDPOINT: MU_SPARQL_ENDPOINT_URL
+      NOMINATIM_BASE_URL: NOMINATIM_BASE_URL
+      NER_MODEL_PATH: PATH_TO_NER_MODEL_FOLDER
+      NER_LABELS: '["CITY", "DOMAIN", "HOUSENUMBERS", "INTERSECTION", "POSTCODE", "PROVINCE", "ROAD", "STREET"]'
+    volumes:
+      - ./:/app
+
+networks:
+  decide:
+    external: true
