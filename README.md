@@ -1,39 +1,27 @@
  # Geocoding Service: Text to Geolocation
  
-This repo provides (the start of) a geocoding service that processes text to extract and resolve geolocations. It combines natural language processing (NLP) for location extraction with geocoding to map locations to geographic coordinates.
+This repo provides a geocoding service that processes text to extract and resolve geolocations. It combines natural language processing (NLP) for location extraction with geocoding to map locations to geographic coordinates.
 
 Location extraction is based on the RobBERT NER model and currently only suitable for Ghent. The service uses spaCy for NLP processing.
  
  ## Features
  - Extracts location entities from text using an NLP model
  - Resolves extracted locations to latitude/longitude using Nominatim
- - Demo app included (see `demo/streamlit_location_app.py`)
- 
- ## Model
-The location extraction model used in this project can be found on HuggingFace:
-
-[svercoutere/RoBERTa-NER-BE-Loc](https://huggingface.co/svercoutere/RoBERTa-NER-BE-Loc)
-
-You need to download the model from [HuggingFace](https://huggingface.co/svercoutere/RoBERTa-NER-BE-Loc) and pass its location to the spaCy model loader.
+ - Load data from local triple store
  
  ## Requirements
- - Python 3.8+
- - SpaCy (model was trained with spaCy v3.6.1, tested with version 3.7.2)
- - [Nominatim](https://nominatim.org/) geocoding service (Docker)
+ - Modify the docker-compose.yaml file and fill in the MU_SPARQL_ENDPOINT of the local triple store (hosted in the app-decide Docker container). This may require modifying the network name as well to match the docker network app-decide is running in.
 
-- Download the RobBERT NER model from [HuggingFace](https://huggingface.co/svercoutere/RoBERTa-NER-BE-Loc) and provide its path to spaCy.
- 
  ### Running Nominatim with Docker
-You need a running Nominatim instance for geocoding. The example below uses Belgium, but you can specify other regions. See https://download.geofabrik.de for available locations. Start it using:
+Running Nominatim has been included in the included docker compose file. Note that on the first start, Nominatim might be busy for an hour to build its
+database. As a volume is mounted for the database, this setup happens once.
  
- ```powershell
- docker run -it -e PBF_URL=https://download.geofabrik.de/europe/belgium-latest.osm.pbf -p 8080:8080 --name nominatim mediagis/nominatim:5.1
+ ## Usage 
+ Run
  ```
- 
- ## Usage
- See the demo app in `demo/streamlit_location_app.py` for an example of how to use the service.
- 
- ## Structure
- - `library/` - Core modules for location extraction and geocoding
- - `demo/` - Example Streamlit app
- 
+docker compose up
+ ```
+and send a request to the /notify-change endpoint on the port as configured in the docker-compose.yaml file.
+
+## Original demo code
+The original demo code can be found in the [demo](/demo) folder.
