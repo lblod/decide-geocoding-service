@@ -35,6 +35,7 @@ class NominatimGeocoder:
             "addressdetails": 1,
             "extratags": 0,
             "namedetails": 0,
+            "polygon_geojson": 1
         }
 
         try:
@@ -81,4 +82,5 @@ class NominatimGeocoder:
             "bbox": r.get("boundingbox"),
             "type": r.get("type"),
             "class": r.get("class"),
+            "geojson": r.get("geojson"),
         }
