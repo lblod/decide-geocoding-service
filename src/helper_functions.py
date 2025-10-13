@@ -1,5 +1,8 @@
+import os
 import re
 import unicodedata
+import requests
+from typing import Optional
 
 
 def clean_string(input_string):
@@ -192,7 +195,9 @@ def process_text(text, ner_model, from_city="Gent"):
     detected_addresses = form_addresses(doc.ents, from_city)
     detected_locations = form_locations(doc.ents, from_city)
     individual_addresses = split_addresses(detected_addresses)
-    detectables = individual_addresses + detected_locations
+
+    detectables = {"streets": detected_locations,
+                   "addresses": individual_addresses}
 
     return detectables, doc.ents, doc
 
@@ -219,6 +224,7 @@ def geocode_detectable(detectable, geocoder, default_city="Gent"):
             "lon": result["lon"],
             "osm_url": result.get("osm_url"),
             "address": result.get("address"),
+            "geojson": result.get("geojson"),
             "detectable": detectable
         }
     else:
@@ -250,3 +256,55 @@ def render_entities_html(doc):
     html_content += doc.text[last_end:]
 
     return html_content
+
+
+def get_street_uri(gemeentenaam: str, straatnaam: str, timeout: int = 15) -> Optional[str]:
+    url = f"{os.getenv('BASE_REGISTRY_URI')}/v2/straatnamen/"
+    params = {"gemeentenaam": gemeentenaam, "straatnaam": straatnaam}
+    r = requests.get(url, params=params, headers={
+                     "Accept": "application/json"}, timeout=timeout)
+    r.raise_for_status()
+    data = r.json()
+
+    items = (data or {}).get("straatnamen", [])
+    if not items:
+        return None
+
+    ident = items[0].get("identificator", {})
+    return url + ident.get("objectId")
+
+
+def get_address_uri(gemeentenaam: str, straatnaam: str, huisnummer: str, busnummer: Optional[str] = None, timeout: int = 15) -> Optional[str]:
+    url = f"{os.getenv('BASE_REGISTRY_URI')}/v2/adressen/"
+    params = {
+        "gemeentenaam": gemeentenaam,
+        "straatnaam": straatnaam,
+        "huisnummer": huisnummer,
+    }
+    if busnummer is not None:
+        params["busnummer"] = busnummer
+
+    r = requests.get(url, params=params, headers={
+                     "Accept": "application/json"}, timeout=timeout)
+    r.raise_for_status()
+    data = r.json()
+
+    items = (data or {}).get("adressen", [])
+    if not items:
+        return None
+
+    ident = items[0].get("identificator", {})
+    return url + ident.get("objectId")
+
+
+def get_start_end_offsets(text: str, word: str) -> list:
+    offsets = []
+    start = 0
+    while True:
+        i = text.find(word, start)
+        if i == -1:
+            break
+        offsets.append((i, i + len(word) - 1))
+        start = i + len(word)
+
+    return offsets
