@@ -1,4 +1,5 @@
-spacy==3.6.1
-numpy<=1.26.x
+spacy
+numpy~=1.26.4
 pandas
 spacy-transformers
+huggingface_hub[cli]

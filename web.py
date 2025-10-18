@@ -1,26 +1,63 @@
 import os
 import json
+
 from src.pipeline import run_pipeline
 from src.spacy_ner_analyzer import SpacyNERAnalyzer
 from src.nominatim_geocoder import NominatimGeocoder
 
-from flask import jsonify, copy_current_request_context
-import threading
+from fastapi import APIRouter, Request, BackgroundTasks
+from pydantic import BaseModel
+from typing import Literal
 
-
-# TODO: DOWNLOAD NER MODEL?
 
 ner_analyzer = SpacyNERAnalyzer(model_path=os.getenv("NER_MODEL_PATH"),
                                 labels=json.loads(os.getenv("NER_LABELS")))
 geocoder = NominatimGeocoder(base_url=os.getenv("NOMINATIM_BASE_URL"),
                              rate_limit=0.5)
 
+router = APIRouter()
 
-@app.route("/notify-change")
-def notify_change():
-    @copy_current_request_context
-    def run_pipeline_with_context():
-        run_pipeline(ner_analyzer, geocoder)
 
-    threading.Thread(target=run_pipeline_with_context, daemon=True).start()
-    return jsonify({"status": "accepted", "message": "Processing started"}), 202
+class Value(BaseModel):
+    type: str
+    value: str
+
+
+class ExpectedTaskPredicateValue(BaseModel):
+    value: Literal[os.getenv("EXPECTED_TASK_PREDICATE")]
+
+
+class ExpectedTaskObjectValue(BaseModel):
+    value: Literal[os.getenv("EXPECTED_TASK_OBJECT")]
+
+
+class Triplet(BaseModel):
+    subject: Value
+    predicate: Value
+    object: Value
+    graph: Value
+
+
+class InsertTriplet(Triplet):
+    predicate: ExpectedTaskPredicateValue
+    object: ExpectedTaskObjectValue
+
+
+class DeltaNotification(BaseModel):
+    inserts: list[InsertTriplet]
+    deletes: list[Triplet]
+
+
+class NotificationResponse(BaseModel):
+    status: str
+    message: str
+
+
+@router.post("/delta", status_code=202)
+async def delta(data: list[DeltaNotification], background_tasks: BackgroundTasks) -> NotificationResponse:
+    for patch in data:
+        for ins in patch.inserts:
+            background_tasks.add_task(run_pipeline, ins.subject.value, ner_analyzer, geocoder)
+
+
+    return NotificationResponse(status="accepted", message="Processing started")
