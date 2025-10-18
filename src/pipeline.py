@@ -25,8 +25,7 @@ def run_pipeline(task_uri: str, ner_analyzer: SpacyNERAnalyzer, geocoder: Nomina
     logger.info(task_data)
 
     cleaned_text = clean_string(task_data)
-    detectables, _, doc = process_text(
-        cleaned_text, ner_analyzer, default_city)
+    detectables, _, doc = process_text(cleaned_text, ner_analyzer, default_city)
 
     if hasattr(doc, 'error'):
         logger.error(f"Error: {doc['error']}")
@@ -38,16 +37,13 @@ def run_pipeline(task_uri: str, ner_analyzer: SpacyNERAnalyzer, geocoder: Nomina
             for geo_entity in ["streets", "addresses"]:
                 if geo_entity in detectables:
                     for detectable in detectables[geo_entity]:
-                        result = geocode_detectable(
-                            detectable, geocoder, default_city)
+                        result = geocode_detectable(detectable, geocoder, default_city)
 
                         if result["success"]:
                             osm_link = result.get("osm_url", "")
 
                             if geo_entity == "streets":
-
-                                straat_object_id = get_street_uri(
-                                    detectable["city"], detectable["name"])
+                                straat_object_id = get_street_uri(detectable["city"], detectable["name"])
 
                                 # TODO: adapt and move example URIs
                                 graph_uri = "http://mu.semte.ch/graphs/annotations"
@@ -57,8 +53,7 @@ def run_pipeline(task_uri: str, ner_analyzer: SpacyNERAnalyzer, geocoder: Nomina
                                 selector_uri = f"http://example.org/id/selector/{uuid4()}"
                                 geom_uri = f"http://data.lblod.info/id/geometries/{uuid4()}"
 
-                                offsets = get_start_end_offsets(
-                                    task_data, detectable["name"])
+                                offsets = get_start_end_offsets(task_data, detectable["name"])
 
                                 source_doc = source_decision
                                 start_offset = offsets[0][0]

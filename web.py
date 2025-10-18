@@ -5,8 +5,9 @@ from src.pipeline import run_pipeline
 from src.spacy_ner_analyzer import SpacyNERAnalyzer
 from src.nominatim_geocoder import NominatimGeocoder
 
-from fastapi import APIRouter, Request
-from pydantic import BaseModel, Literal, BackgroundTasks
+from fastapi import APIRouter, Request, BackgroundTasks
+from pydantic import BaseModel
+from typing import Literal
 
 
 ner_analyzer = SpacyNERAnalyzer(model_path=os.getenv("NER_MODEL_PATH"),
@@ -47,20 +48,14 @@ class DeltaNotification(BaseModel):
     deletes: list[Triplet]
 
 
-class DataModel(BaseModel):
-    __root__: list[DeltaNotification] = []
-
-
 class NotificationResponse(BaseModel):
     status: str
     message: str
 
 
 @router.post("/delta", status_code=202)
-def delta(request: Request, background_tasks: BackgroundTasks) -> NotificationResponse:
-    data = DataModel(__root__=request.json())
-
-    for patch in data.__root__:
+async def delta(data: list[DeltaNotification], background_tasks: BackgroundTasks) -> NotificationResponse:
+    for patch in data:
         for ins in patch.inserts:
             background_tasks.add_task(run_pipeline, ins.subject.value, ner_analyzer, geocoder)
 

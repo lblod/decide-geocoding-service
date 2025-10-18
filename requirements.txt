@@ -2,3 +2,4 @@ spacy
 numpy~=1.26.4
 pandas
 spacy-transformers
+huggingface_hub[cli]
