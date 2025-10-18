@@ -1,4 +1,4 @@
-FROM semtech/mu-python-template:2.0.0-beta.3
+FROM semtech/mu-python-template:feature-fastapi
 LABEL maintainer="ward@ml2grow.com"
 
 RUN hf download svercoutere/RoBERTa-NER-BE-Loc
