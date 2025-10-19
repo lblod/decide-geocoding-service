@@ -10,7 +10,8 @@ def register_airo():
     PREFIX foaf: <http://xmlns.com/foaf/0.1/>
     PREFIX airo: <https://w3id.org/airo#>
     PREFIX example: <http://www.example.org/>
-    PREFIX prov: <http://www.w3.org/ns/prov#> .
+    PREFIX prov: <http://www.w3.org/ns/prov#> 
+    PREFIX lblod: <https://data.vlaanderen.be/ns/lblod#>
 
     INSERT DATA{
         GRAPH <http://mu.semte.ch/graphs/ai> {
@@ -20,7 +21,7 @@ def register_airo():
                 
             $provider a airo:AIDeveloper .
             
-            example:entity-extraction a airo:AIComponent, prov:Agent .
+            example:entity-extraction a lblod:AIComponent .
         }
     }
     """)

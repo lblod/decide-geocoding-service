@@ -1,0 +1,305 @@
+from typing import Optional, Iterator, Any
+from abc import ABC, abstractmethod
+from string import Template
+import uuid
+
+from helpers import query
+from escape_helpers import sparql_escape_uri, sparql_escape_string, sparql_escape_float, sparql_escape_int
+
+
+class Annotation(ABC):
+    def __init__(self, activity_id: str, uri: str, agent: str, agent_type: str):
+        super().__init__()
+        self.activity_id = activity_id
+        self.uri = uri
+        self.agent = agent
+        self.agent_type = agent_type
+
+    @classmethod
+    def create_from_labelstudio(cls, activity_id: str, uri: str, user: str, annotation: Any) -> Optional['Annotation']:
+        if annotation['type'] == 'labels':
+            return NERAnnotation(
+                activity_id,
+                uri,
+                annotation['value']['labels'][0],
+                annotation['value']['start'],
+                annotation['value']['end'],
+                user,
+                "http://www.w3.org/ns/prov#Person"
+            )
+
+        if annotation['type'] == 'choices':
+            return LinkingAnnotation(
+                activity_id,
+                uri,
+                annotation['value']['choices'],
+                user,
+                "http://www.w3.org/ns/prov#Person"
+            )
+
+        return None
+
+    @abstractmethod
+    def to_labelstudio_result(self) -> dict:
+        pass
+
+    @abstractmethod
+    def add_to_triplestore(self):
+        pass
+
+    @classmethod
+    @abstractmethod
+    def create_from_uri(cls, uri: str) -> Iterator['NERAnnotation']:
+        pass
+
+
+class LinkingAnnotation(Annotation):
+    def __init__(self, activity_id: str, uri: str, class_uri: str, agent: str, agent_type: str):
+        super().__init__(activity_id, uri, agent, agent_type)
+        self.class_uri = class_uri
+
+    @classmethod
+    def create_from_uri(cls, uri: str) -> Iterator['NERAnnotation']:
+        query_template = Template("""
+        PREFIX oa:  <http://www.w3.org/ns/oa#>
+        PREFIX prov:  <http://www.w3.org/ns/prov#>
+
+        SELECT ?activity ?body ?agent ?agentType
+        WHERE {
+          ?annotation a oa:Annotation ;
+                       oa:hasTarget ?target .
+          ?annotation oa:hasBody ?body.
+          OPTIONAL { ?annotation oa:motivation ?motivation . }
+
+          # Example filter (uncomment and edit as needed):
+          FILTER(?target = $uri)
+          FILTER(?motivation = "linking")
+
+          OPTIONAL {
+              ?activity a prov:Activity ;
+              prov:generated ?annotation ;
+              prov:wasAssociatedWith ?agent .
+
+              OPTIONAL { ?agent rdf:type ?agentType . }
+          }
+        }
+        """)
+        query_result = query(
+            query_template.substitute(
+                uri=sparql_escape_uri(uri)
+            )
+        )
+
+        if not query_result['results']['bindings']:
+            return
+            yield
+
+        for item in query_result['results']['bindings']:
+            yield cls(item['activity']['value'], uri, item['body']['value'], item['agent']['value'], item['agentType']['value'])
+
+    def to_labelstudio_result(self):
+        return {
+            "type": "choices",
+            "value": {"choices": [self.class_uri]},
+            "origin": "manual", "to_name": "text", "from_name": "entities"
+        }
+
+    def add_to_triplestore(self):
+        query_template = Template("""
+            PREFIX ex:  <http://example.org/>
+            PREFIX oa:  <http://www.w3.org/ns/oa#>
+            PREFIX mu:  <http://mu.semte.ch/vocabularies/core/>
+            PREFIX prov:  <http://www.w3.org/ns/prov#>
+            PREFIX foaf:  <http://xmlns.com/foaf/0.1/>
+            PREFIX dct:  <http://purl.org/dc/terms/>
+            PREFIX skolem:  <http://www.example.org/id/.well-known/genid/>
+            PREFIX nif:  <http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#>
+
+            INSERT {
+              GRAPH <http://mu.semte.ch/graphs/ai> {
+                  $activity_id a prov:Activity;
+                     prov:generated $annotation_id;
+                     prov:wasAssociatedWith $user .
+    
+                  $annotation_id a oa:Annotation ;
+                                 mu:uuid "$id";
+                                 oa:hasBody $clz ;
+                                 nif:confidence 1 ;
+                                 oa:motivation "linking" ;
+                                 oa:hasTarget $uri .
+              }
+            } WHERE {
+              GRAPH <http://mu.semte.ch/graphs/ai> {
+                  FILTER NOT EXISTS { 
+                    ?existingAnn a oa:Annotation ;
+                        oa:hasBody $clz ;
+                        oa:motivation "linking" ;
+                        oa:hasTarget $uri .
+    
+                    ?existingAct a prov:Activity ;
+                     prov:generated ?existingAnn ;
+                     prov:wasAssociatedWith $user .
+                  }
+              }
+            }
+            """)
+        query_string = query_template.substitute(
+            id=str(uuid.uuid1()),
+            annotation_id=sparql_escape_uri("http://example.org/{0}".format(uuid.uuid4())),
+            activity_id=sparql_escape_uri(self.activity_id),
+            uri=sparql_escape_uri(self.uri),
+            user=self.agent,
+            clz=" , ".join(map(sparql_escape_uri, self.class_uri))
+        )
+        query(query_string)
+
+
+class NERAnnotation(Annotation):
+    def __init__(self, activity_id: str, uri: str, class_uri: str, start: int, end: int, agent: str, agent_type: str):
+        super().__init__(activity_id, uri, agent, agent_type)
+        self.class_uri = class_uri
+        self.start = start
+        self.end = end
+
+    @classmethod
+    def create_from_uri(cls, uri: str) -> Iterator['NERAnnotation']:
+        query_template = Template("""
+        PREFIX oa:  <http://www.w3.org/ns/oa#>
+
+        SELECT ?activity ?body ?start ?end ?agent ?agentType
+        WHERE {
+          ?annotation a oa:Annotation ;
+                       oa:hasTarget ?target .
+          ?target a oa:SpecificResource ;
+                  oa:source ?source; oa:selector ?selector .
+          ?selector a oa:TextPositionSelector ;
+                  oa:start ?start; oa:end ?end .
+          ?annotation oa:hasBody ?body.
+          OPTIONAL { ?annotation oa:motivation ?motivation . }
+
+          # Example filter (uncomment and edit as needed):
+          FILTER(?source = $uri)
+          FILTER(?motivation = "classifying")
+
+          OPTIONAL {
+              ?activity a prov:Activity ;
+              prov:generated ?annotation ;
+              prov:wasAssociatedWith ?agent .
+
+              OPTIONAL { ?agent rdf:type ?agentType . }
+          }
+        }
+        """)
+        query_result = query(
+            query_template.substitute(
+                uri=sparql_escape_uri(uri)
+            )
+        )
+        for item in query_result['results']['bindings']:
+            yield cls(item['activity']['value'], uri, item['body']['value'], item['start']['value'],
+                      item['end']['value'], item['agent']['value'], item['agentType']['value'])
+
+    def to_labelstudio_result(self):
+        return {
+            "type": "labels",
+            "value": {"end": self.end, "start": self.start, "labels": [self.class_uri]},
+            "origin": "manual", "to_name": "text", "from_name": "label"
+        }
+
+    def add_to_triplestore(self):
+        query_template = Template("""
+            PREFIX ex:  <http://example.org/>
+            PREFIX oa:  <http://www.w3.org/ns/oa#>
+            PREFIX mu:  <http://mu.semte.ch/vocabularies/core/>
+            PREFIX prov:  <http://www.w3.org/ns/prov#>
+            PREFIX foaf:  <http://xmlns.com/foaf/0.1/>
+            PREFIX dct:  <http://purl.org/dc/terms/>
+            PREFIX skolem:  <http://www.example.org/id/.well-known/genid/>
+            PREFIX nif:  <http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#>
+
+            INSERT {
+              GRAPH <http://mu.semte.ch/graphs/ai> {
+                  $activity_id a prov:Activity;
+                     prov:generated $annotation_id;
+                     prov:wasAssociatedWith $user .
+    
+                  $annotation_id a oa:Annotation ;
+                                 mu:uuid "$id";
+                                 oa:hasBody $clz ;
+                                 nif:confidence 1 ;
+                                 oa:motivation "classifying" ;
+                                 oa:hasTarget $part_of_id .
+    
+                  $part_of_id a oa:SpecificResource ;
+                              oa:source $uri ;
+                              oa:selector $selector_id .
+    
+                  $selector_id a oa:TextPositionSelector ;
+                               oa:start $start ;
+                               oa:end $end .
+                               
+                  $extra
+              }
+            } WHERE {
+              GRAPH <http://mu.semte.ch/graphs/ai> {
+                  FILTER NOT EXISTS {
+                    ?existingAnn a oa:Annotation ;
+                        oa:hasBody $clz ;
+                        oa:motivation "classifying" ;
+                        oa:hasTarget ?existingTarget .
+    
+                    ?existingAct a prov:Activity ;
+                     prov:generated ?existingAnn ;
+                     prov:wasAssociatedWith $user .
+    
+                    ?existingTarget a oa:SpecificResource ;
+                        oa:source $uri ;
+                        oa:selector ?existingSelector .
+    
+                    ?existingSelector a oa:TextPositionSelector ;
+                          oa:start $start ;
+                          oa:end $end .
+                  }
+              }
+            }
+            """)
+        query_string = query_template.substitute(
+            id=str(uuid.uuid1()),
+            annotation_id=sparql_escape_uri("http://example.org/{0}".format(uuid.uuid4())),
+            activity_id=sparql_escape_uri(self.activity_id),
+            selector_id=sparql_escape_uri("http://www.example.org/id/.well-known/genid/{0}".format(uuid.uuid4())),
+            part_of_id=sparql_escape_uri("http://www.example.org/id/.well-known/genid/{0}".format(uuid.uuid4())),
+            uri=sparql_escape_uri(self.uri),
+            start=self.start,
+            end=self.end,
+            user=self.agent,
+            clz=sparql_escape_uri(self.class_uri),
+            extra=self.get_extra_inserts()
+        )
+
+        query(query_string)
+
+    def get_extra_inserts(self) -> str:
+        return ""
+
+
+class GeoAnnotation(NERAnnotation):
+    def __init__(self, geojson: dict, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.geometry = ", ".join(f"{x} {y}" for x, y in geojson["coordinates"])
+
+    def get_extra_inserts(self) -> str:
+        return Template(
+            """
+            $body a dcterms:Location ;
+              locn:geometry $geom .
+        
+            $geom a locn:Geometry ;
+              geosparql:asWKT $wkt .
+            """
+        ).substitute(
+            body=sparql_escape_uri(self.class_uri),
+            wkt=sparql_escape_string(f"SRID=31370;POINT({self.geometry})^^geosparql:wktLiteral"),
+            geom=sparql_escape_uri(f"http://data.lblod.info/id/geometries/{uuid.uuid4()}")
+        )
+

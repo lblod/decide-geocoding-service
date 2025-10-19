@@ -1,19 +1,18 @@
 import os
 import json
 
-from src.pipeline import run_pipeline
-from src.spacy_ner_analyzer import SpacyNERAnalyzer
-from src.nominatim_geocoder import NominatimGeocoder
+from src.airo import register_airo
+from src.task import Task
 
-from fastapi import APIRouter, Request, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from typing import Literal
 
 
-ner_analyzer = SpacyNERAnalyzer(model_path=os.getenv("NER_MODEL_PATH"),
-                                labels=json.loads(os.getenv("NER_LABELS")))
-geocoder = NominatimGeocoder(base_url=os.getenv("NOMINATIM_BASE_URL"),
-                             rate_limit=0.5)
+@app.on_event("startup")
+async def startup_event():
+    register_airo()
+
 
 router = APIRouter()
 
@@ -57,7 +56,8 @@ class NotificationResponse(BaseModel):
 async def delta(data: list[DeltaNotification], background_tasks: BackgroundTasks) -> NotificationResponse:
     for patch in data:
         for ins in patch.inserts:
-            background_tasks.add_task(run_pipeline, ins.subject.value, ner_analyzer, geocoder)
+            task = Task.from_uri(ins.subject.value)
+            background_tasks.add_task(task.execute)
 
 
     return NotificationResponse(status="accepted", message="Processing started")
