@@ -96,7 +96,7 @@ class LinkingAnnotation(Annotation):
             yield
 
         for item in query_result['results']['bindings']:
-            yield cls(item['activity']['value'], uri, item['body']['value'], item['agent']['value'], item['agentType']['value'])
+            yield cls(item['activity']['value'], uri, item['body']['value'], item['agent']['value'], item.get('agentType', {}).get('value'))
 
     def to_labelstudio_result(self):
         return {
@@ -149,8 +149,8 @@ class LinkingAnnotation(Annotation):
             annotation_id=sparql_escape_uri("http://example.org/{0}".format(uuid.uuid4())),
             activity_id=sparql_escape_uri(self.activity_id),
             uri=sparql_escape_uri(self.source_uri),
-            user=self.agent,
-            clz=" , ".join(map(sparql_escape_uri, self.class_uri))
+            user=sparql_escape_uri(self.agent),
+            clz=sparql_escape_uri(self.class_uri)
         )
         query(query_string)
 
@@ -197,8 +197,8 @@ class NERAnnotation(Annotation):
             )
         )
         for item in query_result['results']['bindings']:
-            yield cls(item['activity']['value'], uri, item['body']['value'], item['start']['value'],
-                      item['end']['value'], item['agent']['value'], item['agentType']['value'])
+            yield cls(item['activity']['value'], uri, item['body']['value'], int(item['start']['value']),
+                      int(item['end']['value']), item['agent']['value'], item.get('agentType', {}).get('value'))
 
     def to_labelstudio_result(self):
         return {
@@ -273,8 +273,8 @@ class NERAnnotation(Annotation):
             selector_id=sparql_escape_uri("http://www.example.org/id/.well-known/genid/{0}".format(uuid.uuid4())),
             part_of_id=sparql_escape_uri("http://www.example.org/id/.well-known/genid/{0}".format(uuid.uuid4())),
             uri=sparql_escape_uri(self.source_uri),
-            start=self.start,
-            end=self.end,
+            start=sparql_escape_int(self.start),
+            end=sparql_escape_int(self.end),
             user=sparql_escape_uri(self.agent),
             clz=sparql_escape_uri(self.class_uri),
             extra=self.get_extra_inserts()
@@ -352,8 +352,9 @@ class TripletAnnotation(NERAnnotation):
             )
         )
         for item in query_result['results']['bindings']:
+            print(query_result)
             yield cls(item['pred']['value'], item['obj']['value'], item['activity']['value'], uri,
-                      item['start']['value'], item['end']['value'], item['agent']['value'],
+                      int(item['start']['value']), int(item['end']['value']), item['agent']['value'],
                       item.get('agentType', {}).get('value'))
 
     def add_to_triplestore(self):
@@ -432,7 +433,7 @@ class TripletAnnotation(NERAnnotation):
             obj=sparql_escape_string(self.object),
             selector_id=sparql_escape_uri("http://www.example.org/id/.well-known/genid/{0}".format(uuid.uuid4())),
             part_of_id=sparql_escape_uri("http://www.example.org/id/.well-known/genid/{0}".format(uuid.uuid4())),
-            start=self.start,
-            end=self.end
+            start=sparql_escape_int(self.start),
+            end=sparql_escape_int(self.end)
         )
         query(query_string)

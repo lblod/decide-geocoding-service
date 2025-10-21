@@ -1,8 +1,8 @@
 import os
-import json
 
 from src.airo import register_airo
-from src.task import Task
+from src.task.base import Task
+from src.task.entity_extraction import EntityExtractionTask
 
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
