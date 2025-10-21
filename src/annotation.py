@@ -9,10 +9,10 @@ from escape_helpers import sparql_escape_uri, sparql_escape_string, sparql_escap
 
 
 class Annotation(ABC):
-    def __init__(self, activity_id: str, uri: str, agent: str, agent_type: str):
+    def __init__(self, activity_id: str, source_uri: str, agent: str, agent_type: str):
         super().__init__()
         self.activity_id = activity_id
-        self.uri = uri
+        self.source_uri = source_uri
         self.agent = agent
         self.agent_type = agent_type
 
@@ -55,8 +55,8 @@ class Annotation(ABC):
 
 
 class LinkingAnnotation(Annotation):
-    def __init__(self, activity_id: str, uri: str, class_uri: str, agent: str, agent_type: str):
-        super().__init__(activity_id, uri, agent, agent_type)
+    def __init__(self, activity_id: str, source_uri: str, class_uri: str, agent: str, agent_type: str):
+        super().__init__(activity_id, source_uri, agent, agent_type)
         self.class_uri = class_uri
 
     @classmethod
@@ -148,7 +148,7 @@ class LinkingAnnotation(Annotation):
             id=str(uuid.uuid1()),
             annotation_id=sparql_escape_uri("http://example.org/{0}".format(uuid.uuid4())),
             activity_id=sparql_escape_uri(self.activity_id),
-            uri=sparql_escape_uri(self.uri),
+            uri=sparql_escape_uri(self.source_uri),
             user=self.agent,
             clz=" , ".join(map(sparql_escape_uri, self.class_uri))
         )
@@ -156,8 +156,8 @@ class LinkingAnnotation(Annotation):
 
 
 class NERAnnotation(Annotation):
-    def __init__(self, activity_id: str, uri: str, class_uri: str, start: int, end: int, agent: str, agent_type: str):
-        super().__init__(activity_id, uri, agent, agent_type)
+    def __init__(self, activity_id: str, source_uri: str, class_uri: str, start: int, end: int, agent: str, agent_type: str):
+        super().__init__(activity_id, source_uri, agent, agent_type)
         self.class_uri = class_uri
         self.start = start
         self.end = end
@@ -272,7 +272,7 @@ class NERAnnotation(Annotation):
             activity_id=sparql_escape_uri(self.activity_id),
             selector_id=sparql_escape_uri("http://www.example.org/id/.well-known/genid/{0}".format(uuid.uuid4())),
             part_of_id=sparql_escape_uri("http://www.example.org/id/.well-known/genid/{0}".format(uuid.uuid4())),
-            uri=sparql_escape_uri(self.uri),
+            uri=sparql_escape_uri(self.source_uri),
             start=self.start,
             end=self.end,
             user=sparql_escape_uri(self.agent),
@@ -307,3 +307,132 @@ class GeoAnnotation(NERAnnotation):
             geom=sparql_escape_uri(f"http://data.lblod.info/id/geometries/{uuid.uuid4()}")
         )
 
+
+class TripletAnnotation(NERAnnotation):
+    def __init__(self, predicate: str, obj: str, activity_id: str, source_uri: str, start: int, end: int, agent: str, agent_type: str):
+        super().__init__(activity_id, source_uri, predicate, start, end, agent, agent_type)
+        self.object = obj
+
+    def to_labelstudio_result(self) -> dict:
+        return {}
+
+    @classmethod
+    def create_from_uri(cls, uri: str) -> Iterator['TripletAnnotation']:
+        query_template = Template("""
+                PREFIX oa:  <http://www.w3.org/ns/oa#>
+
+                SELECT ?activity ?start ?end ?agent ?agentType ?subj ?pred ?obj
+                WHERE {
+                  ?annotation a oa:Annotation ;
+                               oa:hasTarget ?target .
+                  ?target a oa:SpecificResource ;
+                          oa:source ?source; oa:selector ?selector .
+                  ?selector a oa:TextPositionSelector ;
+                          oa:start ?start; oa:end ?end .
+                  ?annotation oa:hasBody ?body.
+                  ?body a rdf:Statement ; rdf:subject ?subj; rdf:predicate ?pred; rdf:object ?obj .
+                  OPTIONAL { ?annotation oa:motivation ?motivation . }
+
+                  # Example filter (uncomment and edit as needed):
+                  FILTER(?source = $uri)
+                  FILTER(?motivation = "relation-extraction")
+
+                  OPTIONAL {
+                      ?activity a prov:Activity ;
+                      prov:generated ?annotation ;
+                      prov:wasAssociatedWith ?agent .
+
+                      OPTIONAL { ?agent rdf:type ?agentType . }
+                  }
+                }
+                """)
+        query_result = query(
+            query_template.substitute(
+                uri=sparql_escape_uri(uri)
+            )
+        )
+        for item in query_result['results']['bindings']:
+            yield cls(item['pred']['value'], item['obj']['value'], item['activity']['value'], uri,
+                      item['start']['value'], item['end']['value'], item['agent']['value'],
+                      item.get('agentType', {}).get('value'))
+
+    def add_to_triplestore(self):
+        query_template = Template("""
+            PREFIX ex:  <http://example.org/>
+            PREFIX oa:  <http://www.w3.org/ns/oa#>
+            PREFIX mu:  <http://mu.semte.ch/vocabularies/core/>
+            PREFIX prov:  <http://www.w3.org/ns/prov#>
+            PREFIX foaf:  <http://xmlns.com/foaf/0.1/>
+            PREFIX dct:  <http://purl.org/dc/terms/>
+            PREFIX skolem:  <http://www.example.org/id/.well-known/genid/>
+            PREFIX nif:  <http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#>
+
+            INSERT {
+              GRAPH <http://mu.semte.ch/graphs/ai> {
+                  $activity_id a prov:Activity;
+                     prov:generated $annotation_id;
+                     prov:wasAssociatedWith $user .
+
+                  $annotation_id a oa:Annotation ;
+                     mu:uuid "$id";
+                     oa:hasBody $skolem ;
+                     nif:confidence 1 ;
+                     oa:motivation "relation-extraction" ;
+                     oa:hasTarget $part_of_id .
+                                 
+                  $skolem a rdf:Statement ;
+                    rdf:subject $uri ;
+                    rdf:predicate $pred ;
+                    rdf:object $obj .
+                    
+                  $part_of_id a oa:SpecificResource ;
+                    oa:source $uri ;
+                    oa:selector $selector_id .
+
+                  $selector_id a oa:TextPositionSelector ;
+                    oa:start $start ;
+                    oa:end $end .
+              }
+            } WHERE {
+              GRAPH <http://mu.semte.ch/graphs/ai> {
+                  FILTER NOT EXISTS { 
+                    ?existingAnn a oa:Annotation ;
+                        oa:hasBody ?existingSkolem ;
+                        oa:motivation "relation-extraction" ;
+                        oa:hasTarget ?existingTarget .
+
+                    ?existingAct a prov:Activity ;
+                         prov:generated ?existingAnn ;
+                         prov:wasAssociatedWith $user .
+                    
+                    ?existingSkolem a rdf:Statement ;
+                      rdf:subject $uri ;
+                      rdf:predicate $pred ;
+                      rdf:object $obj .
+                      
+                    ?existingTarget a oa:SpecificResource ;
+                        oa:source $uri ;
+                        oa:selector ?existingSelector .
+    
+                    ?existingSelector a oa:TextPositionSelector ;
+                        oa:start $start ;
+                        oa:end $end .
+                  }
+              }
+            }
+            """)
+        query_string = query_template.substitute(
+            id=str(uuid.uuid1()),
+            annotation_id=sparql_escape_uri("http://example.org/{0}".format(uuid.uuid4())),
+            activity_id=sparql_escape_uri(self.activity_id),
+            uri=sparql_escape_uri(self.source_uri),
+            user=sparql_escape_uri(self.agent),
+            skolem=sparql_escape_uri("http://example.org/{0}".format(uuid.uuid4())),
+            pred=self.class_uri,
+            obj=sparql_escape_string(self.object),
+            selector_id=sparql_escape_uri("http://www.example.org/id/.well-known/genid/{0}".format(uuid.uuid4())),
+            part_of_id=sparql_escape_uri("http://www.example.org/id/.well-known/genid/{0}".format(uuid.uuid4())),
+            start=self.start,
+            end=self.end
+        )
+        query(query_string)
