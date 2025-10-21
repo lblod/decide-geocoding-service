@@ -14,6 +14,7 @@ from .helper_functions import clean_string, get_start_end_offsets, process_text,
 from .spacy_ner_analyzer import SpacyNERAnalyzer
 from .nominatim_geocoder import NominatimGeocoder
 from .annotation import GeoAnnotation
+from .sparql_config import get_prefixes_for_query, GRAPHS, JOB_STATUSES, TASK_OPERATIONS, AI_COMPONENTS, AGENT_TYPES
 
 
 class Task(ABC):
@@ -40,10 +41,9 @@ class Task(ABC):
 
     @classmethod
     def from_uri(cls, task_uri: str) -> 'Task':
-        q = Template("""
-            PREFIX adms: <http://www.w3.org/ns/adms#>
-            PREFIX task: <http://lblod.data.gift/vocabularies/tasks/>
-            
+        q = Template(
+            get_prefixes_for_query("adms", "task") +
+            """
             SELECT ?task ?taskType WHERE {
               ?task task:operation ?taskType .
               FILTER(?task = $uri)
@@ -57,27 +57,26 @@ class Task(ABC):
         raise RuntimeError("Task with uri {0} not found").format(task_uri)
 
     def change_state(self, old_state: str, new_state: str, results_container_uri: str = "") -> None:
-        query_template = Template("""
-            PREFIX task: <http://redpencil.data.gift/vocabularies/tasks/>
-            PREFIX adms: <http://www.w3.org/ns/adms#>
-
+        query_template = Template(
+            get_prefixes_for_query("task", "adms") +
+            """
             DELETE {
-            GRAPH <http://mu.semte.ch/graphs/jobs> {
+            GRAPH <""" + GRAPHS["jobs"] + """> {
                 ?task adms:status ?oldStatus .
             }
             }
             INSERT {
-            GRAPH <http://mu.semte.ch/graphs/jobs> {
+            GRAPH <""" + GRAPHS["jobs"] + """> {
                 ?task
                 $results_container_line
-                adms:status <http://redpencil.data.gift/id/concept/JobStatus/$new_state> .
+                adms:status <$new_status> .
 
             }
             }
             WHERE {
-            GRAPH <http://mu.semte.ch/graphs/jobs> {
+            GRAPH <""" + GRAPHS["jobs"] + """> {
                 BIND($task AS ?task)
-                BIND(<http://redpencil.data.gift/id/concept/JobStatus/$old_state> AS ?oldStatus)
+                BIND(<$old_status> AS ?oldStatus)
                 OPTIONAL { ?task adms:status ?oldStatus . }
             }
             }
@@ -87,10 +86,11 @@ class Task(ABC):
         if results_container_uri:
             results_container_line = f"task:resultsContainer <{results_container_uri}> ;"
 
-        query_string = query_template.substitute(new_state=new_state,
-                                                 old_state=old_state,
-                                                 task=sparql_escape_uri(self.task_uri),
-                                                 results_container_line=results_container_line)
+        query_string = query_template.substitute(
+            new_status=JOB_STATUSES[new_state],
+            old_status=JOB_STATUSES[old_state],
+            task=sparql_escape_uri(self.task_uri),
+            results_container_line=results_container_line)
 
         query(query_string)
 
@@ -113,13 +113,13 @@ class DecisionTask(Task, ABC):
     def __init__(self, task_uri: str):
         super().__init__(task_uri)
 
-        q = f"""
-        PREFIX dct: <http://purl.org/dc/terms/>
-
+        q = Template(
+            get_prefixes_for_query("dct") +
+            """
         SELECT ?source WHERE {{
-          <{task_uri}> dct:source ?source .
+          $task dct:source ?source .
         }}
-        """
+        """).substitute(task=sparql_escape_uri(task_uri))
         r = query(q)
         self.source = r["results"]["bindings"][0]["source"]["value"]
 
@@ -144,7 +144,7 @@ class DecisionTask(Task, ABC):
 
 class EntityExtractionTask(DecisionTask):
 
-    __task_type__ = "http://lblod.data.gift/id/jobs/concept/TaskOperation/entity-extracting"
+    __task_type__ = TASK_OPERATIONS["entity_extraction"]
 
     ner_analyzer = SpacyNERAnalyzer(model_path=os.getenv("NER_MODEL_PATH"), labels=json.loads(os.getenv("NER_LABELS")))
     geocoder = NominatimGeocoder(base_url=os.getenv("NOMINATIM_BASE_URL"), rate_limit=0.5)
@@ -180,8 +180,8 @@ class EntityExtractionTask(DecisionTask):
                                         "http://example.org/{0}".format(uuid4()),
                                         start_offset,
                                         end_offset,
-                                        "http://example.org/entity-extraction",
-                                        "https://data.vlaanderen.be/ns/lblod#AIComponent"
+                                        AI_COMPONENTS["ner_extractor"],
+                                        AGENT_TYPES["ai_component"]
                                     )
                                     annotation.add_to_triplestore()
                             self.logger.info(result)
