@@ -63,7 +63,7 @@ class LinkingAnnotation(Annotation):
     @classmethod
     def create_from_uri(cls, uri: str) -> Iterator['NERAnnotation']:
         query_template = Template(
-            get_prefixes_for_query("oa", "prov") +
+            get_prefixes_for_query("oa", "prov", "rdf") +
             """
         SELECT ?activity ?body ?agent ?agentType
         WHERE {
@@ -158,7 +158,7 @@ class NERAnnotation(Annotation):
     @classmethod
     def create_from_uri(cls, uri: str) -> Iterator['NERAnnotation']:
         query_template = Template(
-            get_prefixes_for_query("oa", "prov") +
+            get_prefixes_for_query("oa", "prov", "rdf") +
             """
         SELECT ?activity ?body ?start ?end ?agent ?agentType
         WHERE {
@@ -302,9 +302,9 @@ class TripletAnnotation(NERAnnotation):
 
     @classmethod
     def create_from_uri(cls, uri: str) -> Iterator['TripletAnnotation']:
-        query_template = Template("""
-                PREFIX oa:  <http://www.w3.org/ns/oa#>
-
+        query_template = Template(
+            get_prefixes_for_query("oa", "prov", "rdf") +
+            """
                 SELECT ?activity ?start ?end ?agent ?agentType ?subj ?pred ?obj
                 WHERE {
                   ?annotation a oa:Annotation ;
@@ -341,18 +341,11 @@ class TripletAnnotation(NERAnnotation):
                       item.get('agentType', {}).get('value'))
 
     def add_to_triplestore(self):
-        query_template = Template("""
-            PREFIX ex:  <http://example.org/>
-            PREFIX oa:  <http://www.w3.org/ns/oa#>
-            PREFIX mu:  <http://mu.semte.ch/vocabularies/core/>
-            PREFIX prov:  <http://www.w3.org/ns/prov#>
-            PREFIX foaf:  <http://xmlns.com/foaf/0.1/>
-            PREFIX dct:  <http://purl.org/dc/terms/>
-            PREFIX skolem:  <http://www.example.org/id/.well-known/genid/>
-            PREFIX nif:  <http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#>
-
+        query_template = Template(
+            get_prefixes_for_query("ex", "oa", "mu", "prov", "foaf", "dct", "skolem", "nif", "rdf") +
+            """
             INSERT {
-              GRAPH <http://mu.semte.ch/graphs/ai> {
+              GRAPH <""" + GRAPHS["ai"] + """> {
                   $activity_id a prov:Activity;
                      prov:generated $annotation_id;
                      prov:wasAssociatedWith $user .
@@ -378,7 +371,7 @@ class TripletAnnotation(NERAnnotation):
                     oa:end $end .
               }
             } WHERE {
-              GRAPH <http://mu.semte.ch/graphs/ai> {
+              GRAPH <""" + GRAPHS["ai"] + """> {
                   FILTER NOT EXISTS { 
                     ?existingAnn a oa:Annotation ;
                         oa:hasBody ?existingSkolem ;
