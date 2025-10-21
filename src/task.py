@@ -3,6 +3,7 @@ import logging
 import os
 import json
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from uuid import uuid4
 from string import Template
@@ -23,7 +24,22 @@ class Task(ABC):
         self.logger = logging.getLogger(self.__class__.__name__)
 
     @classmethod
-    def from_uri(cls, task_uri: str):
+    def lookup(cls, task_type: str) -> Optional['Task']:
+        """
+        Yield all subclasses of the given class, per:
+        https://adamj.eu/tech/2024/05/10/python-all-subclasses/
+        """
+        for subclass in cls.__subclasses__():
+            if hasattr(subclass, '__task_type__') and subclass.__task_type__ == task_type:
+                return subclass
+            else:
+                res = subclass.lookup(task_type)
+                if res is not None:
+                    return res
+        return None
+
+    @classmethod
+    def from_uri(cls, task_uri: str) -> 'Task':
         q = Template("""
             PREFIX adms: <http://www.w3.org/ns/adms#>
             PREFIX task: <http://lblod.data.gift/vocabularies/tasks/>
@@ -34,9 +50,9 @@ class Task(ABC):
             }
         """).substitute(uri=sparql_escape_uri(task_uri))
         for b in query(q).get('results').get('bindings'):
-            for candidate_cls in cls.__subclasses__():
-                if candidate_cls.__task_type__ == b['taskType']['value']:
-                    return candidate_cls(task_uri)
+            candidate_cls = cls.lookup(b['taskType']['value'])
+            if candidate_cls is not None:
+                return candidate_cls(task_uri)
             raise RuntimeError("Unknown task type {0}".format(b['taskType']['value']))
         raise RuntimeError("Task with uri {0} not found").format(task_uri)
 
@@ -150,30 +166,31 @@ class EntityExtractionTask(DecisionTask):
                     if geo_entity in detectables:
                         for detectable in detectables[geo_entity]:
                             result = geocode_detectable(detectable, self.__class__.geocoder, default_city)
+                            print(result)
 
                             if result["success"]:
-                                offsets = get_start_end_offsets(task_data, detectable["name"])
-                                start_offset = offsets[0][0]
-                                end_offset = offsets[0][1]
-                                annotation = GeoAnnotation(
-                                    result.get("geojson", {}),
-                                    self.task_uri,
-                                    uuid4(),
-                                    sparql_escape_uri("http://example.org/{0}".format(uuid4())),
-                                    start_offset,
-                                    end_offset,
-                                    sparql_escape_uri("http://example.org/entity-extraction"),
-                                    sparql_escape_uri("https://data.vlaanderen.be/ns/lblod#AIComponent>")
-                                )
-                                annotation.add_to_triplestore()
+                                if geo_entity == "streets":
+                                    offsets = get_start_end_offsets(task_data, detectable["name"])
+                                    start_offset = offsets[0][0]
+                                    end_offset = offsets[0][1]
+                                    annotation = GeoAnnotation(
+                                        result.get("geojson", {}),
+                                        self.task_uri,
+                                        self.source,
+                                        "http://example.org/{0}".format(uuid4()),
+                                        start_offset,
+                                        end_offset,
+                                        "http://example.org/entity-extraction",
+                                        "https://data.vlaanderen.be/ns/lblod#AIComponent"
+                                    )
+                                    annotation.add_to_triplestore()
                             self.logger.info(result)
             else:
                 self.logger.info("No location entities detected.")
 
     def process(self):
-        task_data = self.fetch_data(self.source)
+        task_data = self.fetch_data()
         self.logger.info(task_data)
-
         self.apply_geo_entities(task_data)
 
 

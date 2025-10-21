@@ -17,7 +17,7 @@ def register_airo():
         GRAPH <http://mu.semte.ch/graphs/ai> {
             example:DECIDe a airo:AISystem ;
                 airo:isDevelopedBy $provider ;
-                example:entity-extraction .
+                airo:hasComponent example:entity-extraction .
                 
             $provider a airo:AIDeveloper .
             

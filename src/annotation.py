@@ -1,3 +1,4 @@
+import logging
 from typing import Optional, Iterator, Any
 from abc import ABC, abstractmethod
 from string import Template
@@ -216,6 +217,8 @@ class NERAnnotation(Annotation):
             PREFIX dct:  <http://purl.org/dc/terms/>
             PREFIX skolem:  <http://www.example.org/id/.well-known/genid/>
             PREFIX nif:  <http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#>
+            PREFIX locn: <http://www.w3.org/ns/locn#>
+            PREFIX geosparql: <http://www.opengis.net/ont/geosparql#>
 
             INSERT {
               GRAPH <http://mu.semte.ch/graphs/ai> {
@@ -272,7 +275,7 @@ class NERAnnotation(Annotation):
             uri=sparql_escape_uri(self.uri),
             start=self.start,
             end=self.end,
-            user=self.agent,
+            user=sparql_escape_uri(self.agent),
             clz=sparql_escape_uri(self.class_uri),
             extra=self.get_extra_inserts()
         )
@@ -286,7 +289,8 @@ class NERAnnotation(Annotation):
 class GeoAnnotation(NERAnnotation):
     def __init__(self, geojson: dict, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.geometry = ", ".join(f"{x} {y}" for x, y in geojson["coordinates"])
+        logging.fatal(geojson)
+        self.geometry = ", ".join(f"{x} {y}" for x, y in geojson.get("coordinates", []))
 
     def get_extra_inserts(self) -> str:
         return Template(
