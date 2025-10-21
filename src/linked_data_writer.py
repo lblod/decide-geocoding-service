@@ -6,6 +6,7 @@ from .sparql_config import get_prefixes_for_query, GRAPHS
 
 
 def get_generic_insertion_query_part() -> Template:
+    """Generate the base SPARQL INSERT template for annotations."""
     return Template(
         get_prefixes_for_query("oa", "mu", "dcterms", "rdfs", "locn", "geosparql", "nif", "xsd", "skos") +
         """
@@ -33,6 +34,7 @@ def get_generic_insertion_query_part() -> Template:
 
 
 def get_street_annotation_insertion_query_part() -> Template:
+    """Generate SPARQL fragment for street-specific annotation data."""
     return Template("""
     $body a dcterms:Location , <https://data.vlaanderen.be/ns/adres#Straatnaam> ;
       rdfs:label $label ;
@@ -45,6 +47,7 @@ def get_street_annotation_insertion_query_part() -> Template:
 
 
 def get_address_annotation_insertion_query_part() -> Template:
+    """Generate SPARQL fragment for address-specific annotation data."""
     return Template("""
     $body a dcterms:Location , locn:Address ;
       rdfs:label $label ;
@@ -62,6 +65,7 @@ def insert_annotation(geo_entity: str, body_uri: str,
                       confidence: float, target_uri: str,
                       source_doc: str, selector_uri: str,
                       start_offset: int, end_offset: int) -> None:
+    """Insert a geographic entity annotation with location data into the triplestore."""
     insertion_query = get_generic_insertion_query_part()
 
     if geo_entity == "streets":

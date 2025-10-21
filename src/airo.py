@@ -5,6 +5,7 @@ from .sparql_config import get_prefixes_for_query, GRAPHS, ORGANIZATIONS
 
 
 def register_airo():
+    """Register the DECIDe AI system and its components in the triplestore."""
     digiteam = ORGANIZATIONS["digiteam"]
     query_template = Template(
         get_prefixes_for_query("mu", "foaf", "airo", "example", "prov", "lblod") +

@@ -10,6 +10,8 @@ from .sparql_config import get_prefixes_for_query, GRAPHS, AGENT_TYPES
 
 
 class Annotation(ABC):
+    """Base class for Open Annotation objects with provenance information."""
+    
     def __init__(self, activity_id: str, source_uri: str, agent: str, agent_type: str):
         super().__init__()
         self.activity_id = activity_id
@@ -19,6 +21,7 @@ class Annotation(ABC):
 
     @classmethod
     def create_from_labelstudio(cls, activity_id: str, uri: str, user: str, annotation: Any) -> Optional['Annotation']:
+        """Create an annotation from Label Studio format."""
         if annotation['type'] == 'labels':
             return NERAnnotation(
                 activity_id,
@@ -43,19 +46,24 @@ class Annotation(ABC):
 
     @abstractmethod
     def to_labelstudio_result(self) -> dict:
+        """Convert annotation to Label Studio result format."""
         pass
 
     @abstractmethod
     def add_to_triplestore(self):
+        """Insert this annotation into the triplestore."""
         pass
 
     @classmethod
     @abstractmethod
     def create_from_uri(cls, uri: str) -> Iterator['NERAnnotation']:
+        """Create annotation instances from a URI in the triplestore."""
         pass
 
 
 class LinkingAnnotation(Annotation):
+    """Annotation linking a resource to a classification/class."""
+    
     def __init__(self, activity_id: str, source_uri: str, class_uri: str, agent: str, agent_type: str):
         super().__init__(activity_id, source_uri, agent, agent_type)
         self.class_uri = class_uri
@@ -149,6 +157,8 @@ class LinkingAnnotation(Annotation):
 
 
 class NERAnnotation(Annotation):
+    """Named Entity Recognition annotation with text position selectors."""
+    
     def __init__(self, activity_id: str, source_uri: str, class_uri: str, start: int, end: int, agent: str, agent_type: str):
         super().__init__(activity_id, source_uri, agent, agent_type)
         self.class_uri = class_uri
@@ -267,10 +277,13 @@ class NERAnnotation(Annotation):
         query(query_string)
 
     def get_extra_inserts(self) -> str:
+        """Return additional SPARQL triples to insert for this annotation type."""
         return ""
 
 
 class GeoAnnotation(NERAnnotation):
+    """NER annotation with geographic location data (GeoJSON)."""
+    
     def __init__(self, geojson: dict, *args, **kwargs):
         super().__init__(*args, **kwargs)
         logging.fatal(geojson)
@@ -293,6 +306,8 @@ class GeoAnnotation(NERAnnotation):
 
 
 class TripletAnnotation(NERAnnotation):
+    """NER annotation representing an RDF statement (subject-predicate-object triple)."""
+    
     def __init__(self, predicate: str, obj: str, activity_id: str, source_uri: str, start: int, end: int, agent: str, agent_type: str):
         super().__init__(activity_id, source_uri, predicate, start, end, agent, agent_type)
         self.object = obj

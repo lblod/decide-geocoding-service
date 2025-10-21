@@ -18,6 +18,7 @@ from .sparql_config import get_prefixes_for_query, GRAPHS, JOB_STATUSES, TASK_OP
 
 
 class Task(ABC):
+    """Base class for background tasks that process data from the triplestore."""
 
     def __init__(self, task_uri: str):
         super().__init__()
@@ -41,6 +42,7 @@ class Task(ABC):
 
     @classmethod
     def from_uri(cls, task_uri: str) -> 'Task':
+        """Create a Task instance from its URI in the triplestore."""
         q = Template(
             get_prefixes_for_query("adms", "task") +
             """
@@ -57,6 +59,7 @@ class Task(ABC):
         raise RuntimeError("Task with uri {0} not found").format(task_uri)
 
     def change_state(self, old_state: str, new_state: str, results_container_uri: str = "") -> None:
+        """Update the task status in the triplestore."""
         query_template = Template(
             get_prefixes_for_query("task", "adms") +
             """
@@ -96,20 +99,25 @@ class Task(ABC):
 
     @contextlib.contextmanager
     def run(self):
+        """Context manager for task execution with state transitions."""
         self.change_state("scheduled", "busy")
         yield
         self.change_state("busy", "success")
 
     def execute(self):
+        """Run the task and handle state transitions."""
         with self.run():
             self.process()
 
     @abstractmethod
     def process(self):
+        """Process task data (implemented by subclasses)."""
         pass
 
 
 class DecisionTask(Task, ABC):
+    """Task that processes decision-making data with input and output containers."""
+    
     def __init__(self, task_uri: str):
         super().__init__(task_uri)
 
@@ -124,6 +132,7 @@ class DecisionTask(Task, ABC):
         self.source = r["results"]["bindings"][0]["source"]["value"]
 
     def fetch_data(self) -> str:
+        """Retrieve the input data for this task from the triplestore."""
         query_string = f"""
         SELECT ?title ?description ?decision_basis WHERE {{
         BIND(<{self.source}> AS ?s)
@@ -143,6 +152,7 @@ class DecisionTask(Task, ABC):
 
 
 class EntityExtractionTask(DecisionTask):
+    """Task that extracts named entities and geocodes location information from text."""
 
     __task_type__ = TASK_OPERATIONS["entity_extraction"]
 
@@ -150,6 +160,7 @@ class EntityExtractionTask(DecisionTask):
     geocoder = NominatimGeocoder(base_url=os.getenv("NOMINATIM_BASE_URL"), rate_limit=0.5)
 
     def apply_geo_entities(self, task_data: str):
+        """Extract geographic entities from text and store as annotations."""
         default_city = "Gent"
 
         cleaned_text = clean_string(task_data)
