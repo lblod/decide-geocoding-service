@@ -54,8 +54,7 @@ def get_extractor(language: str, extractor_type: str = 'composite'):
 
     extractor = extractors.get(extractor_type)
     if extractor is not None:
-        extractor(language)
-
+        return extractor(language)
     raise ValueError(f"Unsupported combination: {language} + {extractor_type}")
 
 # New simplified interface
