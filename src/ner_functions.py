@@ -6,6 +6,7 @@ It maintains backward compatibility while using the improved architecture.
 """
 
 from typing import List, Dict, Any
+from functools import cache
 
 from .ner_extractors import (
     create_german_extractor,
@@ -15,13 +16,22 @@ from .ner_extractors import (
     FlairExtractor,
     LanguageRegexExtractor,
     TitleExtractor,
+    CompositeExtractor
 )
 
 
-# Cached extractors for performance
-_extractors = {}
+def get_composite_extractor(language: str) -> CompositeExtractor:
+    if language == 'german':
+        return create_german_extractor()
+    elif language == 'dutch':
+        return create_dutch_extractor()
+    elif language == 'english':
+        return create_english_extractor()
+    else:
+        raise ValueError(f"Unsupported language: {language}")
 
 
+@cache
 def get_extractor(language: str, extractor_type: str = 'composite'):
     """
     Get a cached extractor for the specified language and type.
@@ -33,35 +43,20 @@ def get_extractor(language: str, extractor_type: str = 'composite'):
     Returns:
         Configured extractor instance
     """
-    key = f"{language}_{extractor_type}"
-    
-    if key not in _extractors:
-        if extractor_type == 'composite':
-            if language == 'german':
-                _extractors[key] = create_german_extractor()
-            elif language == 'dutch':
-                _extractors[key] = create_dutch_extractor()
-            elif language == 'english':
-                _extractors[key] = create_english_extractor()
-            else:
-                raise ValueError(f"Unsupported language: {language}")
-        
-        elif extractor_type == 'spacy':
-            _extractors[key] = SpacyExtractor(language)
-        
-        elif extractor_type == 'flair':
-            _extractors[key] = FlairExtractor(language)
-        
-        elif extractor_type == 'regex':
-            _extractors[key] = LanguageRegexExtractor(language)
-        
-        elif extractor_type == 'title':
-            _extractors[key] = TitleExtractor(language)
-        
-        else:
-            raise ValueError(f"Unsupported combination: {language} + {extractor_type}")
-    
-    return _extractors[key]
+
+    extractors = {
+        'spacy': SpacyExtractor,
+        'flair': FlairExtractor,
+        'regex': LanguageRegexExtractor,
+        'title': TitleExtractor,
+        'composite': get_composite_extractor
+    }
+
+    extractor = extractors.get(extractor_type)
+    if extractor is not None:
+        extractor(language)
+
+    raise ValueError(f"Unsupported combination: {language} + {extractor_type}")
 
 # New simplified interface
 def extract_entities(text: str, language: str = 'german', method: str = 'composite') -> List[Dict[str, Any]]:
