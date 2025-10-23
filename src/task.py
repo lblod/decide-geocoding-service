@@ -3,18 +3,18 @@ import logging
 import os
 import json
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Any
 
 from uuid import uuid4
 from string import Template
 from helpers import query
-from escape_helpers import sparql_escape_uri
+from escape_helpers import sparql_escape_uri, sparql_escape_string
 
-from .helper_functions import clean_string, get_start_end_offsets, process_text, geocode_detectable, get_street_uri
+from .helper_functions import clean_string, get_start_end_offsets, process_text, geocode_detectable
 from .ner_extractors import SpacyGeoAnalyzer
 from .ner_functions import extract_entities
 from .nominatim_geocoder import NominatimGeocoder
-from .annotation import GeoAnnotation, NERAnnotation
+from .annotation import GeoAnnotation, TripletAnnotation
 from .sparql_config import get_prefixes_for_query, GRAPHS, JOB_STATUSES, TASK_OPERATIONS, AI_COMPONENTS, AGENT_TYPES
 
 
@@ -152,10 +152,10 @@ class DecisionTask(Task, ABC):
         return "\n".join([title, description, decision_basis])
 
 
-class EntityExtractionTask(DecisionTask):
-    """Task that extracts named entities and geocodes location information from text."""
+class GeoExtractionTask(DecisionTask):
+    """Task that geocodes location information from text."""
 
-    __task_type__ = TASK_OPERATIONS["entity_extraction"]
+    __task_type__ = TASK_OPERATIONS["geo_extraction"]
 
     ner_analyzer = SpacyGeoAnalyzer(model_path=os.getenv("NER_MODEL_PATH"), labels=json.loads(os.getenv("NER_LABELS")))
     geocoder = NominatimGeocoder(base_url=os.getenv("NOMINATIM_BASE_URL"), rate_limit=0.5)
@@ -200,7 +200,35 @@ class EntityExtractionTask(DecisionTask):
             else:
                 self.logger.info("No location entities detected.")
 
-    def apply_general_entities(self, task_data: str, language: str = 'dutch', method: str = 'regex'):
+    def process(self):
+        task_data = self.fetch_data()
+        self.logger.info(task_data)
+        self.apply_geo_entities(task_data)
+
+
+class EntityExtractionTask(DecisionTask):
+    """Task that extracts named entities from text."""
+
+    def create_title_relation(self, source_uri: str, entities: list[dict[str, Any]]):
+        for entity in entities:
+            if entity['label'] == 'TITLE':
+                TripletAnnotation(
+                    subject=self.source,
+                    predicate="dct:title",
+                    obj=sparql_escape_string(entity['text']),
+                    activity_id=self.task_uri,
+                    source_uri=source_uri,
+                    start=entity['start'],
+                    end=entity['end'],
+                    agent=AI_COMPONENTS["ner_extractor"],
+                    agent_type=AGENT_TYPES["ai_component"]
+                ).add_to_triplestore()
+                self.logger.info(f"Created Title triplet suggestion for '{entity['text']}' ({entity['label']}) at [{entity['start']}:{entity['end']}]")
+
+    def create_en_translation(self, task_data: str) -> str:
+        return None
+
+    def extract_general_entities(self, task_data: str, language: str = 'dutch', method: str = 'regex') -> list[dict[str, Any]]:
         """
         Extract general NER entities (PERSON, ORG, DATE, etc.) from text.
         
@@ -213,35 +241,24 @@ class EntityExtractionTask(DecisionTask):
         
         # Extract entities using the factory pattern
         entities = extract_entities(task_data, language=language, method=method)
-        
-        if not entities:
-            self.logger.info("No general entities detected")
-            return
-        
         self.logger.info(f"Found {len(entities)} general entities")
-        
-        # Create NERAnnotation for each entity
-        for entity in entities:
-            annotation = NERAnnotation(
-                activity_id=self.task_uri,
-                source_uri=self.source,
-                class_uri=f"http://example.org/entity/{entity['label']}",
-                start=entity['start'],
-                end=entity['end'],
-                agent=AI_COMPONENTS["ner_extractor"],
-                agent_type=AGENT_TYPES["ai_component"]
-            )
-            annotation.add_to_triplestore()
-            self.logger.info(f"Created NERAnnotation for '{entity['text']}' ({entity['label']}) at [{entity['start']}:{entity['end']}]")
+
+        return entities
+
 
     def process(self):
-        task_data = self.fetch_data()
-        self.logger.info(task_data)
-        self.apply_geo_entities(task_data)
-        
+        eli_expression = self.fetch_data()
+        self.logger.info(eli_expression)
+
         # Uses defaults from ner_config.py: language='dutch', method='regex'
         # Language can be passed in future when extracted from database
-        self.apply_general_entities(task_data)
+        # todo fallback to source to be removed
+        uri_of_translation_expr = self.create_en_translation(eli_expression) or self.source
+        entities = self.extract_general_entities(eli_expression)
+
+        # todo to be improved upon a lot by inserting functions to create the other predicates
+        # ELI properties
+        self.create_title_relation(uri_of_translation_expr, entities)
 
 
 
