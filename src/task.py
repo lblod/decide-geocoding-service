@@ -2,6 +2,7 @@ import contextlib
 import logging
 import os
 import json
+import langdetect
 from abc import ABC, abstractmethod
 from typing import Optional, Any
 
@@ -209,6 +210,24 @@ class GeoExtractionTask(DecisionTask):
 class EntityExtractionTask(DecisionTask):
     """Task that extracts named entities from text."""
 
+    def create_language_relation(self, source_uri: str, language: str):
+        language_mapping = {
+            'nl': "http://publications.europa.eu/resource/authority/language/NLD",
+            'de': "http://publications.europa.eu/resource/authority/language/DEU",
+            'en': "http://publications.europa.eu/resource/authority/language/ENG"
+        }
+        TripletAnnotation(
+            subject=self.source,
+            predicate="eli:language",
+            obj=sparql_escape_uri(language_mapping.get(language)),
+            activity_id=self.task_uri,
+            source_uri=source_uri,
+            start=0,
+            end=0,
+            agent=AI_COMPONENTS["ner_extractor"],
+            agent_type=AGENT_TYPES["ai_component"]
+        ).add_to_triplestore()
+
     def create_title_relation(self, source_uri: str, entities: list[dict[str, Any]]):
         for entity in entities:
             if entity['label'] == 'TITLE':
@@ -249,6 +268,10 @@ class EntityExtractionTask(DecisionTask):
     def process(self):
         eli_expression = self.fetch_data()
         self.logger.info(eli_expression)
+
+        language = langdetect.detect(eli_expression)
+        # todo replace first argument with eli:expression uri
+        self.create_language_relation(self.source, language)
 
         # Uses defaults from ner_config.py: language='dutch', method='regex'
         # Language can be passed in future when extracted from database
