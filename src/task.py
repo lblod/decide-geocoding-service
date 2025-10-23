@@ -58,7 +58,7 @@ class Task(ABC):
             if candidate_cls is not None:
                 return candidate_cls(task_uri)
             raise RuntimeError("Unknown task type {0}".format(b['taskType']['value']))
-        raise RuntimeError("Task with uri {0} not found").format(task_uri)
+        raise RuntimeError("Task with uri {0} not found".format(task_uri))
 
     def change_state(self, old_state: str, new_state: str, results_container_uri: str = "") -> None:
         """Update the task status in the triplestore."""
