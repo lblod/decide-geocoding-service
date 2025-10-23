@@ -127,7 +127,7 @@ class LinkingAnnotation(Annotation):
                                  mu:uuid "$id";
                                  oa:hasBody $clz ;
                                  nif:confidence 1 ;
-                                 oa:motivation "linking" ;
+                                 oa:motivatedBy oa:linking ;
                                  oa:hasTarget $uri .
               }
             } WHERE {
@@ -135,7 +135,7 @@ class LinkingAnnotation(Annotation):
                   FILTER NOT EXISTS { 
                     ?existingAnn a oa:Annotation ;
                         oa:hasBody $clz ;
-                        oa:motivation "linking" ;
+                        oa:motivatedBy oa:linking ;
                         oa:hasTarget $uri .
     
                     ?existingAct a prov:Activity ;
@@ -150,8 +150,8 @@ class LinkingAnnotation(Annotation):
             annotation_id=sparql_escape_uri("http://example.org/{0}".format(uuid.uuid4())),
             activity_id=sparql_escape_uri(self.activity_id),
             uri=sparql_escape_uri(self.source_uri),
-            user=self.agent,
-            clz=" , ".join(map(sparql_escape_uri, self.class_uri))
+            user=sparql_escape_uri(self.agent),
+            clz = sparql_escape_uri(self.class_uri)
         )
         query(query_string)
 

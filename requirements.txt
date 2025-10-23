@@ -4,3 +4,4 @@ pandas
 spacy-transformers
 huggingface_hub[cli]
 requests
+openai
