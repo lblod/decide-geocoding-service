@@ -71,6 +71,7 @@ JOB_STATUSES = {
 
 TASK_OPERATIONS = {
     "entity_extraction": "http://lblod.data.gift/id/jobs/concept/TaskOperation/entity-extracting",
+    "entity_linking": "http://lblod.data.gift/id/jobs/concept/TaskOperation/entity-linking",
 }
 
 # ==============================================================================
@@ -88,6 +89,7 @@ AGENT_TYPES = {
 
 AI_COMPONENTS = {
     "ner_extractor": "http://example.org/entity-extraction",
+    "entity_linker": "http://example.org/entity-linking",
     "decide_system": "http://example.org/DECIDe",
 }
 
